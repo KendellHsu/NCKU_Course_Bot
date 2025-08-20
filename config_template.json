@@ -1,0 +1,18 @@
+{
+  "course_selection_url": "https://course.ncku.edu.tw/index.php?c=cos21322",
+  "login_info": {
+    "username": "",
+    "password": ""
+  },
+  "verification": {
+    "wait_time": 2,
+    "max_retries": 3
+  },
+  "courses": [
+    {
+      "department_code": "M1",
+      "course_number": "023",
+      "course_name": "射頻振盪器電路設計專論"
+    }
+  ]
+}
