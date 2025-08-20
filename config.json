@@ -1,0 +1,15 @@
+{
+  "course_selection_url": "https://course.ncku.edu.tw/index.php?c=cos21322",
+  "courses": [
+    {
+      "department_code": "M1",
+      "course_number": "023",
+      "course_name": "射頻振盪器電路設計專論"
+    },
+    {
+      "department_code": "ZA",
+      "course_number": "010",
+      "course_name": "生成式人工智慧與機器學習導論-台大"
+    }
+  ]
+}
