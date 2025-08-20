@@ -58,10 +58,170 @@ class NCKUCourseBot:
         
         return default_config
     
-    def connect_to_existing_browser(self):
-        """連接到已經開啟的Arc瀏覽器"""
+    def auto_login(self):
+        """自動登入選課系統"""
         try:
-            logging.info("正在嘗試連接到已開啟的Arc瀏覽器...")
+            logging.info("開始自動登入流程...")
+            
+            # 檢查配置中是否有登入資訊
+            if 'login_info' not in self.config:
+                logging.error("配置檔案中缺少登入資訊")
+                return False
+            
+            username = self.config['login_info'].get('username')
+            password = self.config['login_info'].get('password')
+            
+            if not username or not password:
+                logging.error("配置檔案中的登入資訊不完整")
+                return False
+            
+            logging.info(f"使用帳號: {username}")
+            
+            # 導航到登入頁面
+            login_url = self.config['course_selection_url']
+            logging.info(f"導航到登入頁面: {login_url}")
+            self.driver.get(login_url)
+            
+            # 等待頁面載入
+            time.sleep(2)
+            
+            # 嘗試多種方式查找登入表單元素
+            username_input = None
+            password_input = None
+            
+            # 查找帳號輸入框（使用精確的選擇器）
+            username_selectors = [
+                "//input[@name='user_id']",  # 最精確：根據你提供的 HTML
+                "//input[@id='user_id']",    # 備用：ID 選擇器
+                "//input[@placeholder='學號/識別證號']",  # 備用：placeholder
+                "//input[@class='form-control acpwd_input rwd_input1_3'][@type='text']",  # 備用：class + type
+                "//input[@type='text'][@maxlength='9']",  # 備用：type + maxlength
+                "//input[@type='text'][1]"  # 最後備用：第一個文字輸入框
+            ]
+            
+            for selector in username_selectors:
+                try:
+                    username_input = WebDriverWait(self.driver, 3).until(
+                        EC.presence_of_element_located((By.XPATH, selector))
+                    )
+                    logging.info(f"找到帳號輸入框: {selector}")
+                    break
+                except:
+                    continue
+            
+            # 查找密碼輸入框（使用精確的選擇器）
+            password_selectors = [
+                "//input[@name='passwd']",  # 最精確：根據你提供的 HTML
+                "//input[@id='passwd']",    # 備用：ID 選擇器
+                "//input[@placeholder='同成功入口']",  # 備用：placeholder
+                "//input[@class='form-control acpwd_input rwd_input1_3'][@type='password']",  # 備用：class + type
+                "//input[@type='password']"  # 最後備用：密碼類型輸入框
+            ]
+            
+            for selector in password_selectors:
+                try:
+                    password_input = WebDriverWait(self.driver, 3).until(
+                        EC.presence_of_element_located((By.XPATH, selector))
+                    )
+                    logging.info(f"找到密碼輸入框: {selector}")
+                    break
+                except:
+                    continue
+            
+            if not username_input or not password_input:
+                logging.error("無法找到登入表單元素")
+                return False
+            
+            # 填入帳號密碼
+            logging.info("填入帳號密碼...")
+            username_input.clear()
+            username_input.send_keys(username)
+            password_input.clear()
+            password_input.send_keys(password)
+            
+            logging.info("帳號密碼已填入，等待你輸入驗證碼...")
+            print(f"\n📝 帳號密碼已自動填入")
+            print(f"   帳號: {username}")
+            print(f"   密碼: {'*' * len(password)}")
+            print(f"⏰ 請在瀏覽器中輸入登入驗證碼，然後按 Enter 繼續...")
+            
+            # 等待用戶輸入驗證碼
+            input()
+            
+            # 查找登入按鈕（使用精確的選擇器）
+            login_button = None
+            login_selectors = [
+                "//button[@id='submit_by_acpw']",  # 最精確：根據你提供的 HTML
+                "//button[@type='submit'][@class='btn btn-default']",  # 備用：type + class
+                "//button[contains(@class, 'btn-default')]",  # 備用：class
+                "//button[@type='submit']",  # 備用：type
+                "//button[contains(text(), '登入')]",  # 備用：文字內容
+                "//button[contains(text(), 'Login')]"  # 最後備用：英文文字
+            ]
+            
+            for selector in login_selectors:
+                try:
+                    login_button = self.driver.find_element(By.XPATH, selector)
+                    if login_button:
+                        logging.info(f"找到登入按鈕: {selector}")
+                        break
+                except:
+                    continue
+            
+            if not login_button:
+                logging.error("無法找到登入按鈕")
+                return False
+            
+            # 點擊登入按鈕
+            logging.info("點擊登入按鈕...")
+            login_button.click()
+            
+            # 等待登入完成
+            logging.info("等待登入完成...")
+            time.sleep(5)
+            
+            # 檢查登入狀態
+            current_url = self.driver.current_url
+            page_title = self.driver.title
+            logging.info(f"登入後頁面標題: {page_title}")
+            logging.info(f"登入後頁面URL: {current_url}")
+            
+            # 檢查是否還在登入頁面
+            if "登入" in page_title or "login" in page_title.lower():
+                logging.error("仍在登入頁面，登入可能失敗")
+                return False
+            
+            # 登入成功，強制導向選課頁面
+            logging.info("✅ 登入成功！正在導向選課頁面...")
+            try:
+                self.driver.get(self.config["course_selection_url"])
+                time.sleep(5)  # 等待頁面載入
+                
+                # 確認已導向選課頁面
+                final_url = self.driver.current_url
+                final_title = self.driver.title
+                logging.info(f"導向後頁面標題: {final_title}")
+                logging.info(f"導向後頁面URL: {final_url}")
+                
+                if "cos21322" in final_url:
+                    logging.info("✅ 成功導向選課頁面")
+                    return True
+                else:
+                    logging.warning("導向選課頁面可能失敗")
+                    return False
+                    
+            except Exception as e:
+                logging.error(f"導向選課頁面時發生錯誤: {e}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"自動登入過程中發生錯誤: {e}")
+            return False
+    
+    def connect_to_existing_browser(self):
+        """連接到已經開啟的Chrome瀏覽器"""
+        try:
+            logging.info("正在嘗試連接到已開啟的Chrome瀏覽器...")
             
             # 設定Chrome選項以連接到現有瀏覽器
             chrome_options = Options()
@@ -81,17 +241,13 @@ class NCKUCourseBot:
             return False
     
     def start_new_browser(self):
-        """開啟新的Arc瀏覽器"""
+        """開啟新的Chrome瀏覽器"""
         try:
-            logging.info("正在開啟新的Arc瀏覽器...")
-            
-            # 設定Arc瀏覽器路徑 (macOS)
-            arc_path = "/Applications/Arc.app/Contents/MacOS/Arc"
+            logging.info("正在開啟新的Chrome瀏覽器...")
             
             chrome_options = Options()
-            chrome_options.binary_location = arc_path
             
-            # Arc瀏覽器特定的選項
+            # Chrome瀏覽器選項
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-blink-features=AutomationControlled")
@@ -101,13 +257,16 @@ class NCKUCourseBot:
             # 設定使用者代理
             chrome_options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
+            # 可選：設定視窗大小
+            chrome_options.add_argument("--window-size=1920,1080")
+            
             self.driver = webdriver.Chrome(options=chrome_options)
             
             # 隱藏自動化特徵
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             
             self.driver.implicitly_wait(10)
-            logging.info("✅ 新的Arc瀏覽器已開啟")
+            logging.info("✅ 新的Chrome瀏覽器已開啟")
             
             return True
             
@@ -132,21 +291,21 @@ class NCKUCourseBot:
         raise Exception("無法設定瀏覽器驅動")
         
     def check_login_status(self):
-        """檢查是否已經登入"""
+        """檢查是否已經登入並在正確的選課頁面"""
         try:
-            logging.info(f"正在導航到選課頁面: {self.config['course_selection_url']}")
-            
-            # 導航到選課頁面
-            self.driver.get(self.config["course_selection_url"])
-            time.sleep(3)
-            
-            # 檢查頁面標題或特定元素來判斷是否已登入
+            current_url = self.driver.current_url
             page_title = self.driver.title
-            logging.info(f"頁面標題: {page_title}")
+            logging.info(f"當前頁面標題: {page_title}")
+            logging.info(f"當前頁面URL: {current_url}")
             
-            # 如果頁面包含登入相關元素，表示未登入
-            if "登入" in page_title or "login" in page_title.lower():
-                logging.error("尚未登入，請先手動登入選課系統")
+            # 檢查是否在登入頁面
+            if "登入" in page_title or "login" in page_title.lower() or "登入" in current_url:
+                logging.info("當前在登入頁面，需要登入")
+                return False
+            
+            # 檢查是否在選課頁面（URL 包含 cos21322）
+            if "cos21322" not in current_url:
+                logging.info("當前不在選課頁面，需要導航")
                 return False
             
             # 檢查是否能看到課程列表
@@ -167,6 +326,26 @@ class NCKUCourseBot:
             logging.error(f"檢查登入狀態時發生錯誤: {e}")
             return False
     
+    def check_login_status_simple(self):
+        """簡化的登入狀態檢查 - 只檢查是否不在登入頁面"""
+        try:
+            current_url = self.driver.current_url
+            page_title = self.driver.title
+            logging.info(f"簡化檢查 - 頁面標題: {page_title}")
+            logging.info(f"簡化檢查 - 頁面URL: {current_url}")
+            
+            # 簡單檢查：只要不在登入頁面就認為登入成功
+            if "登入" in page_title or "login" in page_title.lower():
+                logging.info("簡化檢查：仍在登入頁面")
+                return False
+            else:
+                logging.info("簡化檢查：已離開登入頁面，可能登入成功")
+                return True
+                
+        except Exception as e:
+            logging.error(f"簡化登入狀態檢查時發生錯誤: {e}")
+            return False
+    
     def check_course_exists(self, course):
         """檢查特定課程是否存在於頁面中"""
         try:
@@ -174,6 +353,7 @@ class NCKUCourseBot:
             
             # 嘗試多種方式查找課程
             course_found = False
+            course_row = None
             
             # 方法1: 通過課程名稱查找
             try:
@@ -183,8 +363,8 @@ class NCKUCourseBot:
                 course_found = True
                 
                 # 獲取該行的完整資訊
-                row = course_element.find_element(By.XPATH, "./..")
-                row_text = row.text
+                course_row = course_element.find_element(By.XPATH, "./..")
+                row_text = course_row.text
                 logging.info(f"課程行資訊: {row_text}")
                 
             except Exception as e:
@@ -199,25 +379,29 @@ class NCKUCourseBot:
                     course_found = True
                     
                     # 獲取該行的完整資訊
-                    row = course_element.find_element(By.XPATH, "./..")
-                    row_text = row.text
+                    course_row = course_element.find_element(By.XPATH, "./..")
+                    row_text = course_row.text
                     logging.info(f"課程行資訊: {row_text}")
                     
                 except Exception as e:
                     logging.info(f"通過代碼未找到: {course['department_code']}-{course['course_number']}")
             
             # 方法3: 檢查是否有選課按鈕
-            if course_found:
+            if course_found and course_row:
                 try:
                     # 查找該課程行中的選課按鈕
-                    select_button_xpath = f"//td[contains(text(), '{course['course_name']}')]/..//button[contains(text(), '選課')]"
-                    select_button = self.driver.find_element(By.XPATH, select_button_xpath)
+                    select_button_xpath = f".//button[contains(text(), '選課')]"
+                    select_button = course_row.find_element(By.XPATH, select_button_xpath)
                     logging.info(f"✅ 找到選課按鈕: {course['course_name']}")
                     
                     # 檢查按鈕狀態
                     button_text = select_button.text
                     button_enabled = select_button.is_enabled()
                     logging.info(f"選課按鈕文字: {button_text}, 是否可用: {button_enabled}")
+                    
+                    # 將課程行和選課按鈕資訊保存到課程物件中
+                    course['course_row'] = course_row
+                    course['select_button'] = select_button
                     
                 except Exception as e:
                     logging.warning(f"未找到選課按鈕: {course['course_name']}")
@@ -227,6 +411,288 @@ class NCKUCourseBot:
         except Exception as e:
             logging.error(f"檢查課程 {course['course_name']} 時發生錯誤: {e}")
             return False
+    
+    def select_course(self, course):
+        """選課功能：點擊選課按鈕，等待驗證碼輸入，點擊確認"""
+        try:
+            logging.info(f"開始選課流程: {course['course_name']}")
+            
+            # 檢查是否有選課按鈕
+            if 'select_button' not in course:
+                logging.error(f"課程 {course['course_name']} 沒有選課按鈕")
+                return False
+            
+            select_button = course['select_button']
+            
+            # 檢查按鈕是否可用
+            if not select_button.is_enabled():
+                logging.warning(f"選課按鈕不可用: {course['course_name']}")
+                return False
+            
+            # 點擊選課按鈕
+            logging.info(f"點擊選課按鈕: {course['course_name']}")
+            select_button.click()
+            
+            # 等待頁面變化並尋找驗證碼相關元素
+            logging.info("等待驗證碼相關元素出現...")
+            try:
+                # 等待一下讓頁面載入
+                time.sleep(1)
+                
+                # 檢查是否出現了驗證碼輸入框或其他相關元素
+                verification_found = False
+                
+                # 嘗試多種可能的驗證碼輸入框定位方式
+                verification_input = None
+                
+                # 方法1: 通過確切的 name 屬性查找（根據提供的 HTML）
+                try:
+                    verification_input = WebDriverWait(self.driver, 3).until(
+                        EC.presence_of_element_located((By.XPATH, "//input[@name='cos_qry_confirm_validation_code']"))
+                    )
+                    logging.info("找到驗證碼輸入框 (方法1: 確切name)")
+                    verification_found = True
+                except:
+                    pass
+                
+                # 方法2: 通過確切的 id 屬性查找
+                if not verification_input:
+                    try:
+                        verification_input = WebDriverWait(self.driver, 3).until(
+                            EC.presence_of_element_located((By.XPATH, "//input[@id='cos_qry_confirm_validation_code']"))
+                        )
+                        logging.info("找到驗證碼輸入框 (方法2: 確切id)")
+                        verification_found = True
+                    except:
+                        pass
+                
+                # 方法3: 通過 placeholder 屬性查找
+                if not verification_input:
+                    try:
+                        verification_input = WebDriverWait(self.driver, 3).until(
+                            EC.presence_of_element_located((By.XPATH, "//input[contains(@placeholder, '請輸入驗證碼')]"))
+                        )
+                        logging.info("找到驗證碼輸入框 (方法3: placeholder)")
+                        verification_found = True
+                    except:
+                        pass
+                
+                # 方法4: 通過 class 和 maxlength 屬性查找
+                if not verification_input:
+                    try:
+                        verification_input = WebDriverWait(self.driver, 3).until(
+                            EC.presence_of_element_located((By.XPATH, "//input[@class='form-control' and @maxlength='4']"))
+                        )
+                        logging.info("找到驗證碼輸入框 (方法4: class+maxlength)")
+                        verification_found = True
+                    except:
+                        pass
+                
+                # 方法5: 通過包含驗證碼文字的標籤查找
+                if not verification_input:
+                    try:
+                        verification_input = WebDriverWait(self.driver, 3).until(
+                            EC.presence_of_element_located((By.XPATH, "//input[preceding-sibling::*[contains(text(), '驗證碼')] or following-sibling::*[contains(text(), '驗證碼')]]"))
+                        )
+                        logging.info("找到驗證碼輸入框 (方法5: 文字)")
+                        verification_found = True
+                    except:
+                        pass
+                
+                # 方法6: 查找任何新出現的輸入框（4位數驗證碼）
+                if not verification_input:
+                    try:
+                        verification_input = WebDriverWait(self.driver, 3).until(
+                            EC.presence_of_element_located((By.XPATH, "//input[@type='text' and @maxlength='4']"))
+                        )
+                        logging.info("找到驗證碼輸入框 (方法6: 4位數)")
+                        verification_found = True
+                    except:
+                        pass
+                
+                # 方法7: 查找 modal 中的輸入框
+                if not verification_input:
+                    try:
+                        verification_input = WebDriverWait(self.driver, 3).until(
+                            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'modal')]//input[@type='text']"))
+                        )
+                        logging.info("找到驗證碼輸入框 (方法7: modal)")
+                        verification_found = True
+                    except:
+                        pass
+                
+                # 方法8: 查找任何新出現的文字輸入框
+                if not verification_input:
+                    try:
+                        # 在modal框中尋找輸入框
+                        modal_inputs = self.driver.find_elements(By.XPATH, "//div[contains(@class, 'modal-body')]//input[@type='text']")
+                        if modal_inputs:
+                            verification_input = modal_inputs[0]  # 取第一個
+                            logging.info("找到驗證碼輸入框 (方法8: modal body)")
+                            verification_found = True
+                    except:
+                        pass
+                
+                # 如果沒找到驗證碼輸入框，檢查是否有其他相關元素
+                if not verification_found:
+                    try:
+                        # 檢查是否有包含驗證碼文字的元素
+                        captcha_element = self.driver.find_element(By.XPATH, "//*[contains(text(), '驗證碼') or contains(text(), 'captcha')]")
+                        if captcha_element:
+                            logging.info("發現驗證碼相關元素，但未找到輸入框")
+                            print("⚠️  發現驗證碼相關元素，請手動處理驗證碼")
+                            verification_found = True
+                    except:
+                        pass
+                
+                if not verification_found:
+                    logging.warning("未找到驗證碼相關元素，可能不需要驗證碼或頁面結構不同")
+                    print("⚠️  未找到驗證碼輸入框，可能不需要驗證碼")
+                    # 直接嘗試尋找確認按鈕
+                    input("請檢查頁面是否需要其他操作，然後按 Enter 繼續...")
+                else:
+                    # 如果找到驗證碼相關元素，給用戶時間輸入
+                    print(f"\n📝 請在瀏覽器中為課程 '{course['course_name']}' 輸入驗證碼")
+                    print("⏰ 程式會等待 2 秒讓你輸入驗證碼...")
+                    print("🔍 如果看到驗證碼輸入框，請立即輸入驗證碼")
+                    
+                    # 等待 2 秒讓使用者輸入驗證碼
+                    time.sleep(2)
+                    
+                    print("⏱️  時間到！程式將嘗試點擊確認按鈕...")
+                
+                # 查找確認按鈕
+                confirm_button = None
+                
+                # 嘗試多種可能的確認按鈕定位方式
+                try:
+                    # 方法1: 通過確切的 class 名稱查找（根據提供的 HTML）
+                    confirm_button = self.driver.find_element(By.XPATH, "//button[contains(@class, 'addcourse_confirm_save_button')]")
+                    logging.info("找到確認按鈕 (方法1: 特定class)")
+                except:
+                    pass
+                
+                # 方法2: 通過文字內容查找
+                if not confirm_button:
+                    try:
+                        confirm_button = self.driver.find_element(By.XPATH, "//button[contains(text(), '確定') or contains(text(), '確認') or contains(text(), '提交')]")
+                        logging.info("找到確認按鈕 (方法2: 文字)")
+                    except:
+                        pass
+                
+                # 方法3: 通過 class 包含 confirm 查找
+                if not confirm_button:
+                    try:
+                        confirm_button = self.driver.find_element(By.XPATH, "//button[contains(@class, 'confirm') or contains(@class, 'save')]")
+                        logging.info("找到確認按鈕 (方法3: 通用class)")
+                    except:
+                        pass
+                
+                # 方法4: 通過按鈕類型和樣式查找（btn btn-danger）
+                if not confirm_button:
+                    try:
+                        confirm_button = self.driver.find_element(By.XPATH, "//button[@type='button' and contains(@class, 'btn-danger')]")
+                        logging.info("找到確認按鈕 (方法4: 按鈕樣式)")
+                    except:
+                        pass
+                
+                # 方法5: 通過 data-dismiss 屬性查找
+                if not confirm_button:
+                    try:
+                        confirm_button = self.driver.find_element(By.XPATH, "//button[@data-dismiss='modal' and contains(text(), '確定')]")
+                        logging.info("找到確認按鈕 (方法5: modal)")
+                    except:
+                        pass
+                
+                if not confirm_button:
+                    logging.error("無法找到確認按鈕")
+                    return False
+                
+                # 點擊確認按鈕
+                logging.info("點擊確認按鈕完成選課")
+                
+                # 嘗試滾動到按鈕位置
+                try:
+                    self.driver.execute_script("arguments[0].scrollIntoView(true);", confirm_button)
+                    time.sleep(1)
+                except:
+                    pass
+                
+                confirm_button.click()
+                
+                # 等待選課結果
+                time.sleep(3)
+                
+                # 檢查並關閉可能的彈出視窗
+                try:
+                    # 查找並關閉可能的彈出視窗
+                    close_buttons = self.driver.find_elements(By.XPATH, "//button[contains(@class, 'close') or contains(@data-dismiss, 'modal')]")
+                    for btn in close_buttons:
+                        if btn.is_displayed():
+                            btn.click()
+                            time.sleep(1)
+                            break
+                except:
+                    pass
+                
+                # 檢查選課是否成功
+                try:
+                    # 檢查是否有成功訊息
+                    success_message = self.driver.find_element(By.XPATH, "//*[contains(text(), '成功') or contains(text(), '完成') or contains(text(), '已選')]")
+                    logging.info(f"✅ 選課成功: {course['course_name']}")
+                    print(f"🎉 課程 '{course['course_name']}' 選課成功！")
+                    return True
+                except:
+                    # 檢查是否有錯誤訊息
+                    try:
+                        error_message = self.driver.find_element(By.XPATH, "//*[contains(text(), '失敗') or contains(text(), '錯誤') or contains(text(), '已滿')]")
+                        logging.warning(f"選課失敗: {course['course_name']} - {error_message.text}")
+                        print(f"❌ 課程 '{course['course_name']}' 選課失敗")
+                        return False
+                    except:
+                        logging.info(f"選課完成，但無法確定結果: {course['course_name']}")
+                        print(f"⚠️  課程 '{course['course_name']}' 選課完成，請檢查結果")
+                        return True
+                
+            except Exception as e:
+                logging.error(f"選課過程中發生錯誤: {e}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"選課 {course['course_name']} 時發生錯誤: {e}")
+            return False
+    
+    def select_all_courses(self):
+        """選取所有配置的課程"""
+        logging.info("開始選取所有配置的課程...")
+        
+        if 'courses' not in self.config or not self.config['courses']:
+            logging.warning("配置檔案中沒有課程資訊")
+            return
+        
+        total_courses = len(self.config['courses'])
+        selected_courses = 0
+        
+        print(f"\n=== 開始選課 ===")
+        print(f"總共需要選取 {total_courses} 門課程")
+        
+        for i, course in enumerate(self.config['courses'], 1):
+            print(f"\n[{i}/{total_courses}] 選取課程: {course['course_name']}")
+            print(f"系所代碼: {course['department_code']}, 課程編號: {course['course_number']}")
+            
+            if self.select_course(course):
+                selected_courses += 1
+                print(f"✅ 選課成功")
+            else:
+                print(f"❌ 選課失敗")
+        
+        print(f"\n=== 選課完成 ===")
+        print(f"成功選取 {selected_courses}/{total_courses} 門課程")
+        
+        if selected_courses == total_courses:
+            print("🎉 所有課程都已成功選取！")
+        else:
+            print("⚠️  部分課程選課失敗，請檢查原因")
     
     def check_all_courses(self):
         """檢查所有配置的課程"""
@@ -287,6 +753,15 @@ class NCKUCourseBot:
                 logging.info("正在關閉瀏覽器...")
                 self.driver.quit()
                 logging.info("瀏覽器已關閉")
+    
+    def close(self):
+        """關閉瀏覽器"""
+        try:
+            if hasattr(self, 'driver') and self.driver:
+                self.driver.quit()
+                logging.info("✅ 瀏覽器已關閉")
+        except Exception as e:
+            logging.error(f"關閉瀏覽器時發生錯誤: {e}")
 
 def main():
     print("=== 選課系統課程檢查測試 ===")

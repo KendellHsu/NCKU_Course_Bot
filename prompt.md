@@ -20,3 +20,10 @@ A: 不太確定應該怎麼設計
 
 4. 額外資訊
 需要我提供選課按鈕 / 選課驗證碼 物件資訊嗎?
+
+
+
+https://course.ncku.edu.tw/index.php?c=cos21322&m=captcha
+
+
+https://course.ncku.edu.tw/index.php?c=auth

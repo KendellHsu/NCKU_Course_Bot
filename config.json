@@ -1,5 +1,13 @@
 {
   "course_selection_url": "https://course.ncku.edu.tw/index.php?c=cos21322",
+  "login_info": {
+    "username": "E94111059",
+    "password": "Ncku1059"
+  },
+  "verification": {
+    "wait_time": 2,
+    "max_retries": 3
+  },
   "courses": [
     {
       "department_code": "M1",
