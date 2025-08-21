@@ -7,12 +7,45 @@ from selenium.webdriver.chrome.options import Options
 import time
 import json
 import logging
+import os
+
+# 导入自定义模块
+try:
+    from captcha_solver import CaptchaSolver
+    from env_config import EnvConfig
+    CAPTCHA_SOLVER_AVAILABLE = True
+except ImportError as e:
+    print(f"警告：无法导入验证码识别模块: {e}")
+    print("将使用手动输入验证码模式")
+    CAPTCHA_SOLVER_AVAILABLE = False
 
 class NCKUCourseBot:
     def __init__(self, config_file="config.json"):
         self.config = self.load_config(config_file)
         self.driver = None
         self.setup_logging()
+        
+        # 初始化验证码识别器
+        self.captcha_solver = None
+        if CAPTCHA_SOLVER_AVAILABLE:
+            try:
+                # 优先从环境变量获取API密钥
+                if 'OPENAI_API_KEY' in os.environ:
+                    api_key = os.environ['OPENAI_API_KEY']
+                elif 'openai_config' in self.config and self.config['openai_config'].get('api_key'):
+                    api_key = self.config['openai_config']['api_key']
+                else:
+                    api_key = None
+                
+                if api_key:
+                    model = self.config.get('openai_config', {}).get('model', 'gpt-5-mini')
+                    self.captcha_solver = CaptchaSolver(api_key, model)
+                    logging.info("✅ 验证码识别器初始化成功")
+                else:
+                    logging.warning("未找到OpenAI API密钥，将使用手动输入验证码模式")
+            except Exception as e:
+                logging.error(f"初始化验证码识别器时发生错误: {e}")
+                self.captcha_solver = None
         
     def setup_logging(self):
         logging.basicConfig(
@@ -139,14 +172,30 @@ class NCKUCourseBot:
             password_input.clear()
             password_input.send_keys(password)
             
-            logging.info("帳號密碼已填入，等待你輸入驗證碼...")
+            logging.info("帳號密碼已填入，嘗試自動識別驗證碼...")
             print(f"\n📝 帳號密碼已自動填入")
             print(f"   帳號: {username}")
             print(f"   密碼: {'*' * len(password)}")
-            print(f"⏰ 請在瀏覽器中輸入登入驗證碼，然後按 Enter 繼續...")
             
-            # 等待用戶輸入驗證碼
-            input()
+            # 尝试自动识别验证码
+            if self.captcha_solver and self.config.get('verification', {}).get('auto_captcha', True):
+                print("🤖 正在使用AI自动识别验证码...")
+                
+                # 等待页面加载完成
+                time.sleep(2)
+                
+                # 自动识别并填写验证码
+                if self.captcha_solver.auto_solve_captcha(self.driver):
+                    print("✅ AI成功识别并填写验证码！")
+                    logging.info("AI自动识别验证码成功")
+                else:
+                    print("❌ AI识别验证码失败，请手动输入")
+                    logging.warning("AI识别验证码失败，切换到手动模式")
+                    print("⏰ 請在瀏覽器中輸入登入驗證碼，然後按 Enter 繼續...")
+                    input()
+            else:
+                print("⏰ 請在瀏覽器中輸入登入驗證碼，然後按 Enter 繼續...")
+                input()
             
             # 查找登入按鈕（使用精確的選擇器）
             login_button = None
@@ -238,6 +287,9 @@ class NCKUCourseBot:
             
         except Exception as e:
             logging.error(f"無法連接到現有瀏覽器: {e}")
+            logging.info("连接失败，将返回 False 并继续执行")
+            print(f"⚠️  连接现有浏览器失败: {e}")
+            print("   程序将尝试开启新浏览器...")
             return False
     
     def start_new_browser(self):
@@ -275,24 +327,31 @@ class NCKUCourseBot:
             return False
     
     def setup_driver(self):
-        """設定瀏覽器驅動，優先嘗試連接現有瀏覽器"""
-        # 首先嘗試連接到現有瀏覽器
-        if self.connect_to_existing_browser():
-            logging.info("✅ 成功連接到現有瀏覽器")
-            return True
+        """設定瀏覽器驅動，直接開啟新瀏覽器"""
+        logging.info("=== 开始设置浏览器驱动 ===")
+        print("=== 开始设置浏览器驱动 ===")
         
-        # 如果無法連接，則開啟新瀏覽器
-        logging.info("無法連接到現有瀏覽器，正在開啟新瀏覽器...")
+        # 直接開啟新瀏覽器
+        logging.info("正在開啟新的Chrome瀏覽器...")
+        print("🚀 正在開啟新的Chrome瀏覽器...")
         if self.start_new_browser():
             logging.info("✅ 新瀏覽器開啟成功")
+            print("✅ 新瀏覽器開啟成功")
             return True
         
-        # 如果都失敗，拋出異常
+        # 如果開啟失敗，拋出異常
+        logging.error("無法開啟新瀏覽器")
+        print("❌ 無法開啟新瀏覽器")
         raise Exception("無法設定瀏覽器驅動")
         
     def check_login_status(self):
         """檢查是否已經登入並在正確的選課頁面"""
         try:
+            # 检查浏览器驱动是否设置
+            if not self.driver:
+                logging.error("浏览器驱动未设置，无法检查登录状态")
+                return False
+                
             current_url = self.driver.current_url
             page_title = self.driver.title
             logging.info(f"當前頁面標題: {page_title}")
@@ -551,13 +610,31 @@ class NCKUCourseBot:
                     # 直接嘗試尋找確認按鈕
                     input("請檢查頁面是否需要其他操作，然後按 Enter 繼續...")
                 else:
-                    # 如果找到驗證碼相關元素，給用戶時間輸入
-                    print(f"\n📝 請在瀏覽器中為課程 '{course['course_name']}' 輸入驗證碼")
-                    print("⏰ 程式會等待 2 秒讓你輸入驗證碼...")
-                    print("🔍 如果看到驗證碼輸入框，請立即輸入驗證碼")
-                    
-                    # 等待 2 秒讓使用者輸入驗證碼
-                    time.sleep(2)
+                    # 尝试自动识别验证码
+                    if self.captcha_solver and self.config.get('verification', {}).get('auto_captcha', True):
+                        print(f"\n🤖 正在使用AI自动识别课程 '{course['course_name']}' 的验证码...")
+                        
+                        # 等待页面稳定
+                        time.sleep(1)
+                        
+                        # 自动识别并填写验证码
+                        if self.captcha_solver.auto_solve_captcha(self.driver):
+                            print("✅ AI成功识别并填写验证码！")
+                            logging.info(f"AI自动识别课程 {course['course_name']} 验证码成功")
+                        else:
+                            print("❌ AI识别验证码失败，请手动输入")
+                            logging.warning(f"AI识别课程 {course['course_name']} 验证码失败，切换到手动模式")
+                            print(f"📝 請在瀏覽器中為課程 '{course['course_name']}' 輸入驗證碼")
+                            print("⏰ 程式會等待 5 秒讓你輸入驗證碼...")
+                            time.sleep(5)
+                    else:
+                        # 如果找到驗證碼相關元素，給用戶時間輸入
+                        print(f"\n📝 請在瀏覽器中為課程 '{course['course_name']}' 輸入驗證碼")
+                        print("⏰ 程式會等待 2 秒讓你輸入驗證碼...")
+                        print("🔍 如果看到驗證碼輸入框，請立即輸入驗證碼")
+                        
+                        # 等待 2 秒讓使用者輸入驗證碼
+                        time.sleep(2)
                     
                     print("⏱️  時間到！程式將嘗試點擊確認按鈕...")
                 
@@ -726,17 +803,99 @@ class NCKUCourseBot:
         else:
             print("⚠️  部分課程未找到，請檢查課程資訊或選課時間")
     
+    def auto_course_selection(self):
+        """自動選課功能 - 完整流程"""
+        try:
+            logging.info("開始自動選課流程...")
+            print("🤖 開始自動選課流程...")
+            
+            # 步骤1: 设置浏览器驱动
+            try:
+                self.setup_driver()
+                logging.info("✅ 浏览器驱动设置成功")
+                print("✅ 浏览器驱动设置成功")
+            except Exception as e:
+                logging.error(f"设置浏览器驱动失败: {e}")
+                print(f"❌ 无法设置浏览器驱动: {e}")
+                return
+            
+            # 检查浏览器驱动是否设置成功
+            if not self.driver:
+                logging.error("浏览器驱动未设置，无法继续")
+                print("❌ 浏览器驱动未设置，无法继续")
+                return
+            
+            # 步骤2: 检查是否需要登录
+            print("\n📋 步骤1: 检查登录状态...")
+            try:
+                if self.check_login_status():
+                    print("✅ 已登录，跳过登录步骤")
+                    logging.info("用户已登录，跳过登录步骤")
+                else:
+                    print("🔐 需要登录，开始自动登录...")
+                    if not self.auto_login():
+                        print("❌ 自动登录失败")
+                        logging.error("自动登录失败")
+                        return
+                    print("✅ 自动登录成功")
+                    
+            except Exception as e:
+                print("🔐 登录状态检查失败，尝试自动登录...")
+                logging.warning(f"登录状态检查失败: {e}")
+                if not self.auto_login():
+                    print("❌ 自动登录失败")
+                    logging.error("自动登录失败")
+                    return
+                print("✅ 自动登录成功")
+            
+            # 步骤3: 检查所有课程
+            print("\n📚 步骤2: 检查课程...")
+            self.check_all_courses()
+            
+            # 步骤4: 自动选课
+            print("\n🎯 步骤3: 开始自动选课...")
+            self.select_all_courses()
+            
+            # 保持瀏覽器開啟一段時間，讓你可以查看結果
+            print("\n🎉 自动选课流程完成！")
+            print("按Enter鍵關閉瀏覽器...")
+            input()
+            
+        except Exception as e:
+            logging.error(f"自动选课过程中发生错误: {e}")
+            print(f"\n❌ 自动选课过程中发生错误: {e}")
+        finally:
+            if self.driver:
+                logging.info("正在關閉瀏覽器...")
+                print("正在關閉瀏覽器...")
+                self.driver.quit()
+                logging.info("瀏覽器已關閉")
+                print("瀏覽器已關閉")
+                
     def test_course_check(self):
         """測試課程檢查功能"""
         try:
             logging.info("開始測試課程檢查功能...")
             
-            self.setup_driver()
+            # 尝试设置浏览器驱动
+            try:
+                self.setup_driver()
+                logging.info("✅ 浏览器驱动设置成功")
+            except Exception as e:
+                logging.error(f"设置浏览器驱动失败: {e}")
+                print(f"❌ 无法设置浏览器驱动: {e}")
+                return
             
             # 檢查登入狀態
-            if not self.check_login_status():
-                logging.error("登入檢查失敗，無法繼續檢查課程")
-                return
+            try:
+                if not self.check_login_status():
+                    logging.error("登入檢查失敗，無法繼續檢查課程")
+                    print("⚠️  登录检查失败，但程序将继续执行...")
+                    # 不直接返回，让程序继续执行
+            except Exception as e:
+                logging.error(f"检查登录状态时发生错误: {e}")
+                print(f"⚠️  检查登录状态时发生错误: {e}")
+                print("程序将继续执行...")
             
             # 檢查所有課程
             self.check_all_courses()
@@ -764,16 +923,25 @@ class NCKUCourseBot:
             logging.error(f"關閉瀏覽器時發生錯誤: {e}")
 
 def main():
-    print("=== 選課系統課程檢查測試 ===")
-    print("請確保你已經在Arc瀏覽器中登入選課系統")
-    print("然後按Enter鍵開始測試...")
+    print("=== NCKU 自動選課系統 ===")
+    print("🤖 此程序将自动完成以下步骤：")
+    print("   1. 开启浏览器")
+    print("   2. 自动登录选课系统")
+    print("   3. AI 自动识别验证码")
+    print("   4. 检查目标课程")
+    print("   5. 自动选课")
+    print("\n⚙️ 配置信息：")
+    print("   - 使用 GPT-4o-mini 模型")
+    print("   - 自动验证码识别已启用")
+    print("   - 智能浏览器管理")
+    print("\n按Enter鍵開始自動選課...")
     
     try:
         input()
-        print("開始執行測試...")
+        print("🚀 開始執行自動選課...")
         
         bot = NCKUCourseBot()
-        bot.test_course_check()
+        bot.auto_course_selection()
         
     except KeyboardInterrupt:
         print("\n程式被使用者中斷")
