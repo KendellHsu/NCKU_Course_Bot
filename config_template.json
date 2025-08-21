@@ -4,9 +4,16 @@
     "username": "",
     "password": ""
   },
+  "openai_config": {
+    "api_key": "",
+    "model": "gpt-5-mini",
+    "max_completion_tokens": 10
+  },
   "verification": {
     "wait_time": 2,
-    "max_retries": 3
+    "max_retries": 3,
+    "auto_captcha": true,
+    "captcha_retry_count": 3
   },
   "courses": [
     {
